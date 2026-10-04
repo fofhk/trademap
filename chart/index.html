@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ballast levels</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #131722; color: #d1d4dc;
+                 font: 13px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; gap: 12px; align-items: center; padding: 6px 12px; }
+    #status.err { color: #f23645; }
+    #chart { flex: 1; min-height: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <select id="symbol"></select>
+    <span id="status">loading…</span>
+  </header>
+  <div id="chart"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

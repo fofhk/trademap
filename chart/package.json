@@ -1,0 +1,17 @@
+{
+  "name": "ballast-chart",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Hand-drawn price levels for chartlevels.py (read-only prototype). Served by ../chartserve.py.",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@luxalgo/vela": "0.8.1"
+  },
+  "devDependencies": {
+    "vite": "8.3.2"
+  }
+}
