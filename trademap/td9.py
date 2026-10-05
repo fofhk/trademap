@@ -113,6 +113,16 @@ def closed_bars(bars: list[Bar]) -> list[Bar]:
     return list(bars)
 
 
+def series(closes: list[float]) -> tuple[list[int | None], list[int | None],
+                                         list[tuple[float, float] | None]]:
+    """The script's state at EVERY bar, not just where it marks: (TDUp, TDDn,
+    (upper, lower) band), each None while Pine would give na. marks() is built on
+    this, so a study reading running counts uses the same definition as the chart."""
+    return (_relative(_setup_counts(closes, rising=True)),
+            _relative(_setup_counts(closes, rising=False)),
+            _bands(closes))
+
+
 def marks(bars: list[Bar]) -> list[dict]:
     """Closed bars, oldest first -> the script's marks, oldest first.
 
@@ -122,10 +132,7 @@ def marks(bars: list[Bar]) -> list[dict]:
     for i in range(1, len(bars)):
         if bars[i].time <= bars[i - 1].time:
             raise Td9Error(f"bar times not strictly increasing at index {i}")
-    closes = [b.close for b in bars]
-    up = _relative(_setup_counts(closes, rising=True))
-    down = _relative(_setup_counts(closes, rising=False))
-    bands = _bands(closes)
+    up, down, bands = series([b.close for b in bars])
 
     out: list[dict] = []
     for i, b in enumerate(bars):
