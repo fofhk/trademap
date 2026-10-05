@@ -14,6 +14,12 @@ enough against a page in the same browser, so every request must also carry a
 Host of 127.0.0.1/localhost on this port (a DNS-rebinding page arrives with its
 own hostname), and every POST an Origin of the same (a cross-site form or fetch
 carries the attacker's origin).
+
+GET /api/marks?symbol=&tf= serves the 9TD marks (ballast/td9.py) over public,
+unauthenticated venue bars (ballast/chartbars.py). It is the only outbound call
+this process makes, and it carries no credentials. Marks are computed fresh on
+every request and never written anywhere -- in particular not into the
+drawings store, which is the operator's levels and nothing else.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from ballast import chartbars, td9
 from ballast.chartlevels import SYMBOLS
 
 HERE = Path(__file__).resolve().parent
@@ -65,6 +72,27 @@ def check_symbol(symbol) -> str:
     if not isinstance(symbol, str) or not SYMBOL_RE.match(symbol) or symbol not in SYMBOLS:
         raise Rejected(400, f"symbol {symbol!r} not in {sorted(SYMBOLS)}")
     return symbol
+
+
+def check_tf(tf) -> str:
+    if not isinstance(tf, str) or tf not in chartbars.TIMEFRAMES:
+        raise Rejected(400, f"tf {tf!r} not in {list(chartbars.TIMEFRAMES)}")
+    return tf
+
+
+def marks_payload(symbol: str, tf: str, now_ms: int, fetch=None) -> dict:
+    """Fetch bars and run td9. An upstream or data failure is a 502 with the
+    reason: an empty `marks` list must only ever mean the script marked nothing."""
+    try:
+        bars = td9.closed_bars((fetch or chartbars.fetch)(symbol, tf, now_ms))
+        marks = td9.marks(bars)
+    except (chartbars.ChartBarsError, td9.Td9Error) as e:
+        raise Rejected(502, f"marks unavailable for {symbol} {tf}: {e}") from None
+    if not bars:
+        raise Rejected(502, f"marks unavailable for {symbol} {tf}: no closed bars")
+    return {"symbol": symbol, "tf": tf, "venue": SYMBOLS[symbol]["provider"],
+            "computed_at": now_ms, "closed_bars": len(bars),
+            "last_closed": bars[-1].time, "marks": marks}
 
 
 def check_length(content_length: str | None) -> int:
@@ -137,6 +165,19 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             check_host(self.headers.get("Host"), self.port)
             url = urllib.parse.urlsplit(self.path)
+            if url.path == "/api/marks":
+                q = urllib.parse.parse_qs(url.query)
+                symbol = check_symbol((q.get("symbol") or [None])[0])
+                tf = check_tf((q.get("tf") or [None])[0])
+                try:
+                    payload = marks_payload(symbol, tf, int(time.time() * 1000))
+                except Rejected:
+                    raise
+                except Exception as e:
+                    # A bug here must not fall through to the drawings error below
+                    # and be reported as a corrupt levels file.
+                    raise Rejected(500, f"marks failed: {type(e).__name__}: {e}") from None
+                return self._json(200, payload)
             if url.path == "/api/drawings":
                 q = urllib.parse.parse_qs(url.query)
                 symbol = check_symbol((q.get("symbol") or [None])[0])
