@@ -20,6 +20,14 @@ unauthenticated venue bars (ballast/chartbars.py). It is the only outbound call
 this process makes, and it carries no credentials. Marks are computed fresh on
 every request and never written anywhere -- in particular not into the
 drawings store, which is the operator's levels and nothing else.
+
+GET /api/sweep?symbol=&tf= serves the exploratory sweep-reclaim marks
+(ballast/sweepmarks.py, which calls farseer's detector) over the same bars,
+1000 of them. Display only. It needs farseer's source and polars/numpy, so
+start the server with farseer's interpreter to get it (9TD works without):
+
+    FARSEER_SRC=/Users/tingluo/Documents/CC/farseer/src \\
+        /Users/tingluo/Documents/CC/farseer/.venv/bin/python chartserve.py
 """
 
 from __future__ import annotations
@@ -35,7 +43,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ballast import chartbars, td9
+from ballast import chartbars, sweepmarks, td9
 from ballast.chartlevels import SYMBOLS
 
 HERE = Path(__file__).resolve().parent
@@ -93,6 +101,25 @@ def marks_payload(symbol: str, tf: str, now_ms: int, fetch=None) -> dict:
     return {"symbol": symbol, "tf": tf, "venue": SYMBOLS[symbol]["provider"],
             "computed_at": now_ms, "closed_bars": len(bars),
             "last_closed": bars[-1].time, "marks": marks}
+
+
+def sweep_payload(symbol: str, tf: str, now_ms: int, fetch=None) -> dict:
+    """Fetch bars and run the sweep detector. Same failure rule as marks_payload:
+    an empty `events` list must only ever mean the detector found nothing."""
+    try:
+        bars = td9.closed_bars((fetch or chartbars.fetch)(symbol, tf, now_ms, limit=sweepmarks.FETCH_LIMIT))
+    except (chartbars.ChartBarsError, td9.Td9Error) as e:
+        raise Rejected(502, f"sweep unavailable for {symbol} {tf}: {e}") from None
+    if not bars:
+        raise Rejected(502, f"sweep unavailable for {symbol} {tf}: no closed bars")
+    try:
+        segments = sweepmarks.load_segments() if symbol in sweepmarks.REGIME_SYMBOLS else None
+        events = sweepmarks.events(bars, chartbars.INTERVAL_MS[tf], segments)
+    except sweepmarks.SweepError as e:
+        raise Rejected(500, f"sweep detector unavailable: {e}") from None
+    return {"symbol": symbol, "tf": tf, "venue": SYMBOLS[symbol]["provider"],
+            "computed_at": now_ms, "closed_bars": len(bars),
+            "last_closed": bars[-1].time, "regime_table": segments is not None, "events": events}
 
 
 def check_length(content_length: str | None) -> int:
@@ -177,6 +204,17 @@ class Handler(SimpleHTTPRequestHandler):
                     # A bug here must not fall through to the drawings error below
                     # and be reported as a corrupt levels file.
                     raise Rejected(500, f"marks failed: {type(e).__name__}: {e}") from None
+                return self._json(200, payload)
+            if url.path == "/api/sweep":
+                q = urllib.parse.parse_qs(url.query)
+                symbol = check_symbol((q.get("symbol") or [None])[0])
+                tf = check_tf((q.get("tf") or [None])[0])
+                try:
+                    payload = sweep_payload(symbol, tf, int(time.time() * 1000))
+                except Rejected:
+                    raise
+                except Exception as e:
+                    raise Rejected(500, f"sweep failed: {type(e).__name__}: {e}") from None
                 return self._json(200, payload)
             if url.path == "/api/drawings":
                 q = urllib.parse.parse_qs(url.query)

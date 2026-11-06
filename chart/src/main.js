@@ -7,6 +7,7 @@ import { HyperliquidProvider } from '@luxalgo/vela/providers/hyperliquid';
 // chart is constructed.
 import { KDJ_TYPE } from './kdj.js';
 import { TD9_TYPE, setMarks } from './td9marks.js';
+import { SWEEP_TYPE, setSweep } from './sweepmarks.js';
 
 // Must match ballast/chartlevels.py SYMBOLS -- the server rejects anything else,
 // so a drift here shows up as a failed save, not as levels filed under the
@@ -65,10 +66,15 @@ chart.addNativeIndicator('macd', { inputs: { fastLength: 12, slowLength: 26, sig
 chart.addNativeIndicator('on-balance-volume');
 chart.addNativeIndicator(KDJ_TYPE, { inputs: { length: 9, m1: 3, m2: 3 } });
 chart.addNativeIndicator(TD9_TYPE);
+chart.addNativeIndicator(SWEEP_TYPE);
 
-function marksStatus(text, isError = false) {
-    marksEl.textContent = text;
-    marksEl.classList.toggle('err', isError);
+// #marks shows the 9TD part and the sweep part side by side; either one failing
+// turns the line red.
+const marksParts = { td9: ['', false], sweep: ['', false] };
+function marksStatus(part, text, isError = false) {
+    marksParts[part] = [text, isError];
+    marksEl.textContent = [marksParts.td9[0], marksParts.sweep[0]].filter(Boolean).join(' · ');
+    marksEl.classList.toggle('err', marksParts.td9[1] || marksParts.sweep[1]);
 }
 
 // Marks come from Python (chartserve /api/marks -> ballast/td9.py), never from
@@ -85,15 +91,43 @@ async function loadMarks() {
         if (seq !== marksSeq) return; // a newer request (symbol/timeframe switch) owns the display
         setMarks(sym.vela, tf, body.marks);
         const last = new Date(body.last_closed).toLocaleString();
-        marksStatus(`9TD: ${body.marks.length} marks over ${body.closed_bars} closed bars (last ${last})`);
+        marksStatus('td9', `9TD: ${body.marks.length} marks over ${body.closed_bars} closed bars (last ${last})`);
     } catch (e) {
         if (seq !== marksSeq) return;
         // Stale marks from the previous fetch would look current; clear them.
         setMarks(sym.vela, tf, []);
-        marksStatus(`9TD marks failed — ${e.message}`, true);
+        marksStatus('td9', `9TD marks failed — ${e.message}`, true);
     }
 }
-setInterval(loadMarks, MARKS_REFRESH_MS);
+
+// Sweep-reclaim events (chartserve /api/sweep -> ballast/sweepmarks.py), same
+// rules as the 9TD marks: computed in Python, a failure shown, never "none".
+let sweepSeq = 0;
+async function loadSweep() {
+    const seq = ++sweepSeq;
+    const sym = current;
+    const tf = tfSelect.value;
+    try {
+        const r = await fetch(`/api/sweep?symbol=${encodeURIComponent(sym.symbol)}&tf=${encodeURIComponent(tf)}`);
+        const body = await r.json().catch(() => ({ error: `HTTP ${r.status}, body not JSON` }));
+        if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+        if (seq !== sweepSeq) return;
+        setSweep(sym.vela, tf, body.events);
+        const n2 = body.events.filter((e) => e.tier === 2).length;
+        const n1 = body.events.length - n2;
+        marksStatus('sweep', `扫底回收 ${n2} 个${n1 ? `（另一档 ${n1}）` : ''}`);
+    } catch (e) {
+        if (seq !== sweepSeq) return;
+        setSweep(sym.vela, tf, []);
+        marksStatus('sweep', `扫底回收失败 — ${e.message}`, true);
+    }
+}
+
+function loadOverlays() {
+    loadMarks();
+    loadSweep();
+}
+setInterval(loadOverlays, MARKS_REFRESH_MS);
 
 async function loadDrawings(sym) {
     const r = await fetch(`/api/drawings?symbol=${encodeURIComponent(sym.symbol)}`);
@@ -152,7 +186,7 @@ window.addEventListener('pagehide', () => {
 tfSelect.addEventListener('change', () => {
     try { localStorage.setItem('ballast.timeframe', tfSelect.value); } catch { /* ignore */ }
     chart.setMarket({ timeframe: tfSelect.value });
-    loadMarks();
+    loadOverlays();
 });
 
 select.addEventListener('change', async () => {
@@ -179,11 +213,11 @@ select.addEventListener('change', async () => {
         status(`load failed, saving disabled — ${e.message}`, true);
     }
     select.disabled = false;
-    loadMarks();
+    loadOverlays();
     await chart.setMarket({ symbol: next.vela });
 });
 
-loadMarks();
+loadOverlays();
 loadDrawings(current)
     .then(() => {
         loaded = true;
