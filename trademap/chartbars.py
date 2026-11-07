@@ -3,7 +3,7 @@
 The chart (chart/src/main.js) shows Binance USD-M perp candles for BTCUSDT and
 Hyperliquid candles for HYPE. Marks computed from any other venue's closes
 would sit on candles they were not computed from, so the venues here follow
-ballast.chartlevels.SYMBOLS' `provider`, not Bybit.
+trademap.chartlevels.SYMBOLS' `provider`, not Bybit.
 
 Public, unauthenticated endpoints, stdlib urllib only. Every failure -- network,
 HTTP status, a body that does not parse, zero bars -- raises ChartBarsError:
@@ -18,23 +18,35 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from ballast.chartlevels import SYMBOLS
-from ballast.td9 import Bar
+from trademap.chartlevels import SYMBOLS
+from trademap.td9 import Bar
 
 BINANCE_KLINES = "https://fapi.binance.com/fapi/v1/klines"
 HYPERLIQUID_INFO = "https://api.hyperliquid.xyz/info"
 DEFAULT_LIMIT = 500
 DEFAULT_TIMEOUT = 10.0
 
-# Chart timeframe (the page's <select> values, Vela's canonical keys) -> interval.
-# Both venues happen to spell these the same; kept per venue so a divergence is
-# one edit, not a silent mismatch.
+# Chart timeframe (the page's button values, which Vela parses too: minutes,
+# D/W/M, "3D" = three days) -> the venue's interval name. Both venues happen to
+# spell these the same; kept per venue so a divergence is one edit, not a
+# silent mismatch.
+#
+# 3D: Vela 0.8.1 has no native 3-day key and would build it by bucketing
+# 12-hour bars at multiples of 3 days from the epoch. Binance's own 3d klines
+# open one day later than that, so chart/src/main.js fetches them natively;
+# Hyperliquid's coincide with the buckets. Either way the page shows the
+# venue's native 3-day bars, and so does this module.
 INTERVALS = {
-    "binance": {"15": "15m", "60": "1h", "240": "4h", "D": "1d", "W": "1w"},
-    "hyperliquid": {"15": "15m", "60": "1h", "240": "4h", "D": "1d", "W": "1w"},
+    "binance": {"15": "15m", "30": "30m", "60": "1h", "120": "2h", "240": "4h",
+                "D": "1d", "3D": "3d", "W": "1w", "M": "1M"},
+    "hyperliquid": {"15": "15m", "30": "30m", "60": "1h", "120": "2h", "240": "4h",
+                    "D": "1d", "3D": "3d", "W": "1w", "M": "1M"},
 }
-INTERVAL_MS = {"15": 15 * 60_000, "60": 3_600_000, "240": 4 * 3_600_000,
-               "D": 86_400_000, "W": 7 * 86_400_000}
+# A month has no fixed length: 30 days only sizes fetch windows and converts
+# "N days" into a bar count; it never places a bar.
+INTERVAL_MS = {"15": 15 * 60_000, "30": 30 * 60_000, "60": 3_600_000, "120": 2 * 3_600_000,
+               "240": 4 * 3_600_000, "D": 86_400_000, "3D": 3 * 86_400_000,
+               "W": 7 * 86_400_000, "M": 30 * 86_400_000}
 TIMEFRAMES = tuple(INTERVAL_MS)
 
 # Chart symbol -> the venue's own name for it (Vela's `binance:BTCUSDT.P` is the

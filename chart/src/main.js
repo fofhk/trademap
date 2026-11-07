@@ -1,5 +1,7 @@
-// Hand-drawn levels -> chartserve.py -> chartlevels.py. Read-only prototype:
-// nothing here or downstream places an order.
+// trademap: the operator's chart window. Signals are computed in Python
+// (chartserve.py) and only drawn here; hand-drawn levels go the other way
+// (-> chartserve.py -> chartlevels.py). Nothing here or downstream places an
+// order.
 import { Vela } from '@luxalgo/vela';
 import { BinanceProvider } from '@luxalgo/vela/providers/binance';
 import { HyperliquidProvider } from '@luxalgo/vela/providers/hyperliquid';
@@ -8,17 +10,15 @@ import { HyperliquidProvider } from '@luxalgo/vela/providers/hyperliquid';
 import { KDJ_TYPE } from './kdj.js';
 import { TD9_TYPE, setMarks } from './td9marks.js';
 import { SWEEP_TYPE, setSweep } from './sweepmarks.js';
+import { TIMEFRAMES, DEFAULT_TIMEFRAME, sameTf } from './timeframes.js';
 
-// Must match ballast/chartlevels.py SYMBOLS -- the server rejects anything else,
+// Must match trademap/chartlevels.py SYMBOLS -- the server rejects anything else,
 // so a drift here shows up as a failed save, not as levels filed under the
 // wrong name.
 const SYMBOLS = [
     { symbol: 'BTCUSDT', provider: 'binance', vela: 'binance:BTCUSDT.P' },
     { symbol: 'HYPE', provider: 'hyperliquid', vela: 'hyperliquid:HYPE' },
 ];
-// Drawings are anchored in time+price, so they carry across timeframes; only
-// the bars change. Remembered per browser, purely a viewing convenience.
-const TIMEFRAMES = [['15', '15m'], ['60', '1H'], ['240', '4H'], ['D', '1D'], ['W', '1W']];
 const SAVE_DEBOUNCE_MS = 1000;
 // The 9TD marks only change when a bar closes; a minute's lag behind the close
 // is the price of not tracking each venue's bar boundaries here.
@@ -29,14 +29,32 @@ const statusEl = document.getElementById('status');
 for (const s of SYMBOLS) select.add(new Option(`${s.symbol} (${s.provider})`, s.symbol));
 
 const marksEl = document.getElementById('marks');
-const tfSelect = document.getElementById('timeframe');
-for (const [tf, label] of TIMEFRAMES) tfSelect.add(new Option(label, tf));
-let timeframe = '60';
+
+// Timeframe: one row of buttons (15m … 1M) with the digits 1..9 as shortcuts.
+// Drawings are anchored in time+price, so they carry across timeframes; only
+// the bars change. The choice is remembered per browser, purely a viewing
+// convenience.
+const tfNav = document.getElementById('timeframes');
+const tfButtons = new Map();
+for (const { value, label, key } of TIMEFRAMES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.title = `${label}（快捷键 ${key}）`;
+    b.dataset.tf = value;
+    b.addEventListener('click', () => setTimeframe(value));
+    tfNav.append(b);
+    tfButtons.set(value, b);
+}
+let timeframe = DEFAULT_TIMEFRAME;
 try {
-    const saved = localStorage.getItem('ballast.timeframe');
-    if (TIMEFRAMES.some(([tf]) => tf === saved)) timeframe = saved;
+    const saved = localStorage.getItem('trademap.timeframe');
+    if (TIMEFRAMES.some((t) => t.value === saved)) timeframe = saved;
 } catch { /* storage blocked: default 1H */ }
-tfSelect.value = timeframe;
+function showTimeframe() {
+    for (const [value, b] of tfButtons) b.setAttribute('aria-pressed', String(value === timeframe));
+}
+showTimeframe();
 
 function status(text, isError = false) {
     statusEl.textContent = text;
@@ -51,8 +69,40 @@ let loaded = false;
 let lastSaved = null;
 let timer = null;
 
+// Vela 0.8.1 has no native 3-day key: it would bucket 12-hour bars at
+// multiples of 3 days from the epoch, and Binance's own 3d klines open one day
+// later than those buckets. The marks are computed on Binance's 3d bars
+// (trademap/chartbars.py), so the chart must show those same bars: for the
+// perp on 3D, fetch and stream the native 3d klines; everything else is the
+// stock provider. (Hyperliquid's 3d bars coincide with the buckets, so its
+// provider needs nothing.)
+const BINANCE_FUTURES = 'https://fapi.binance.com/fapi/v1';
+function native3d(ticker, tf) {
+    const t = ticker.trim().toUpperCase();
+    return sameTf(tf, '3D') && t.endsWith('.P') ? t.slice(0, -2) : null;
+}
+class BinanceNative3D extends BinanceProvider {
+    async getBars(ticker, tf, range) {
+        const sym = native3d(ticker, tf);
+        if (!sym) return super.getBars(ticker, tf, range);
+        try {
+            const raw = await this.fetchKlines(BINANCE_FUTURES, sym, '3d', range);
+            return raw.map((k) => ({ time: Number(k[0]), open: Number(k[1]), high: Number(k[2]),
+                low: Number(k[3]), close: Number(k[4]), volume: Number(k[5]) }));
+        } catch (e) {
+            console.warn(`[trademap] Binance 3d ${ticker}: ${e instanceof Error ? e.message : String(e)}`);
+            return [];
+        }
+    }
+    subscribe(ticker, tf, onBar) {
+        const sym = native3d(ticker, tf);
+        if (!sym) return super.subscribe(ticker, tf, onBar);
+        return this.streamKlines(ticker, tf, sym, true, '3d', onBar);
+    }
+}
+
 const chart = new Vela('#chart', { symbol: current.vela, timeframe, live: true, theme: 'dark' });
-chart.data.registerProvider('binance', new BinanceProvider());
+chart.data.registerProvider('binance', new BinanceNative3D());
 chart.data.registerProvider('hyperliquid', new HyperliquidProvider());
 
 // Display-only studies, TradingView default parameters spelled out so a change
@@ -77,13 +127,13 @@ function marksStatus(part, text, isError = false) {
     marksEl.classList.toggle('err', marksParts.td9[1] || marksParts.sweep[1]);
 }
 
-// Marks come from Python (chartserve /api/marks -> ballast/td9.py), never from
+// Marks come from Python (chartserve /api/marks -> trademap/td9.py), never from
 // this page. A failure is shown, not rendered as "no marks".
 let marksSeq = 0;
 async function loadMarks() {
     const seq = ++marksSeq;
     const sym = current;
-    const tf = tfSelect.value;
+    const tf = timeframe;
     try {
         const r = await fetch(`/api/marks?symbol=${encodeURIComponent(sym.symbol)}&tf=${encodeURIComponent(tf)}`);
         const body = await r.json().catch(() => ({ error: `HTTP ${r.status}, body not JSON` }));
@@ -100,13 +150,13 @@ async function loadMarks() {
     }
 }
 
-// Sweep-reclaim events (chartserve /api/sweep -> ballast/sweepmarks.py), same
+// Sweep-reclaim events (chartserve /api/sweep -> trademap/sweepmarks.py), same
 // rules as the 9TD marks: computed in Python, a failure shown, never "none".
 let sweepSeq = 0;
 async function loadSweep() {
     const seq = ++sweepSeq;
     const sym = current;
-    const tf = tfSelect.value;
+    const tf = timeframe;
     try {
         const r = await fetch(`/api/sweep?symbol=${encodeURIComponent(sym.symbol)}&tf=${encodeURIComponent(tf)}`);
         const body = await r.json().catch(() => ({ error: `HTTP ${r.status}, body not JSON` }));
@@ -183,10 +233,25 @@ window.addEventListener('pagehide', () => {
     });
 });
 
-tfSelect.addEventListener('change', () => {
-    try { localStorage.setItem('ballast.timeframe', tfSelect.value); } catch { /* ignore */ }
-    chart.setMarket({ timeframe: tfSelect.value });
+function setTimeframe(value) {
+    if (value === timeframe || !tfButtons.has(value)) return;
+    timeframe = value;
+    showTimeframe();
+    try { localStorage.setItem('trademap.timeframe', value); } catch { /* ignore */ }
+    chart.setMarket({ timeframe: value });
     loadOverlays();
+}
+
+// Digits 1..9 switch the period. Not while typing (a drawing's text, Vela's
+// own inputs) and not with a modifier held (⌘1 is the browser's tab switch).
+window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    const t = e.target;
+    if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    const hit = TIMEFRAMES.find((x) => x.key === e.key);
+    if (!hit) return;
+    e.preventDefault();
+    setTimeframe(hit.value);
 });
 
 select.addEventListener('change', async () => {

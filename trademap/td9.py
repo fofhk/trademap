@@ -1,7 +1,7 @@
 """The operator's "🍅 9TD with Bollinger Bands" TradingView script, ported to Python.
 
 This module is the source of truth for those marks: the chart page only draws
-what it is given, so that if the marks later feed a Ballast signal, the signal
+what it is given, so that if the marks later feed a trademap signal, the signal
 and the picture come from the same code. Pure -- no I/O, no clock.
 
 Pine source being ported (semantics kept exactly, including its quirks):

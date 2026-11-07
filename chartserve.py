@@ -15,14 +15,14 @@ Host of 127.0.0.1/localhost on this port (a DNS-rebinding page arrives with its
 own hostname), and every POST an Origin of the same (a cross-site form or fetch
 carries the attacker's origin).
 
-GET /api/marks?symbol=&tf= serves the 9TD marks (ballast/td9.py) over public,
-unauthenticated venue bars (ballast/chartbars.py). It is the only outbound call
+GET /api/marks?symbol=&tf= serves the 9TD marks (trademap/td9.py) over public,
+unauthenticated venue bars (trademap/chartbars.py). It is the only outbound call
 this process makes, and it carries no credentials. Marks are computed fresh on
 every request and never written anywhere -- in particular not into the
 drawings store, which is the operator's levels and nothing else.
 
 GET /api/sweep?symbol=&tf= serves the exploratory sweep-reclaim marks
-(ballast/sweepmarks.py, which calls farseer's detector) over the same bars,
+(trademap/sweepmarks.py, which calls farseer's detector) over the same bars,
 1000 of them. Display only. It needs farseer's source and polars/numpy, so
 start the server with farseer's interpreter to get it (9TD works without):
 
@@ -43,8 +43,8 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ballast import chartbars, sweepmarks, td9
-from ballast.chartlevels import SYMBOLS
+from trademap import chartbars, sweepmarks, td9
+from trademap.chartlevels import SYMBOLS
 
 HERE = Path(__file__).resolve().parent
 DIST = HERE / "chart" / "dist"

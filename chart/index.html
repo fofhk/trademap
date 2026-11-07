@@ -3,12 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ballast levels</title>
+  <title>trademap</title>
   <style>
     html, body { margin: 0; height: 100%; background: #131722; color: #d1d4dc;
                  font: 13px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
     body { display: flex; flex-direction: column; }
     header { display: flex; gap: 12px; align-items: center; padding: 6px 12px; }
+    #timeframes { display: flex; gap: 2px; }
+    #timeframes button { background: none; border: 1px solid transparent; border-radius: 3px;
+                         color: #787b86; font: inherit; padding: 2px 7px; cursor: pointer; }
+    #timeframes button:hover { color: #d1d4dc; }
+    #timeframes button[aria-pressed="true"] { color: #d1d4dc; border-color: #2a2e39; background: #1e222d; }
     #status.err, #marks.err { color: #f23645; }
     #chart { flex: 1; min-height: 0; }
   </style>
@@ -16,7 +21,7 @@
 <body>
   <header>
     <select id="symbol"></select>
-    <select id="timeframe"></select>
+    <nav id="timeframes" aria-label="周期（快捷键 1–9）"></nav>
     <span id="status">loading…</span>
     <span id="marks">9TD: loading…</span>
   </header>

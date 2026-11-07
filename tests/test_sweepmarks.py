@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 import chartserve
-from ballast import chartbars, sweepmarks as SM, td9
+from trademap import chartbars, sweepmarks as SM, td9
 
 try:
     SM._farseer()
@@ -257,7 +257,7 @@ def test_api_sweep_over_http(server, tmp_path):
     status, body = _get(server, "/api/sweep?symbol=BTCUSDT&tf=60")
     assert status == 200 and [(e["time"] - T0) // H for e in _tier2(body["events"])] == [RECLAIM]
     assert _get(server, "/api/sweep?symbol=ETHUSDT&tf=60")[0] == 400
-    assert _get(server, "/api/sweep?symbol=BTCUSDT&tf=M")[0] == 400
+    assert _get(server, "/api/sweep?symbol=BTCUSDT&tf=1H")[0] == 400
     assert _get(server, "/api/sweep?symbol=BTCUSDT&tf=60", host="evil.example:80")[0] == 403
     assert not (tmp_path / "store").exists()                           # nothing written
 

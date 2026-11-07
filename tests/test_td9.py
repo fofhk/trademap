@@ -1,6 +1,6 @@
 """9TD marks: a port of the operator's TradingView script that must agree with it.
 
-These marks may later feed Ballast signals, so the expensive errors are the
+These marks may later feed trademap signals, so the expensive errors are the
 ones where the port quietly disagrees with the chart the operator trusts: a
 mark one bar early (counting the first 4 bars), a mark during the script's
 warm-up (ignoring valuewhen's na), a "*" decided by the wrong stdev, a 🍅 on a
@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 import chartserve
-from ballast import chartbars, chartlevels, td9
+from trademap import chartbars, chartlevels, td9
 
 H = 3_600_000
 T0 = 1_790_000_000_000
@@ -229,6 +229,22 @@ def test_venues_follow_the_chart_not_bybit():
         assert set(chartbars.INTERVALS[venue]) == set(chartbars.TIMEFRAMES)
 
 
+def test_the_nine_chart_periods_are_served_natively_on_both_venues():
+    """The page's buttons (chart/src/timeframes.js, in this order, keys 1..9)
+    and the server must agree, and every period must be the venue's own
+    interval so marks land on the bars the page shows -- 3D in particular,
+    which Vela would otherwise rebuild from 12-hour bars on a different
+    boundary than Binance's."""
+    assert chartbars.TIMEFRAMES == ("15", "30", "60", "120", "240", "D", "3D", "W", "M")
+    for venue in ("binance", "hyperliquid"):
+        assert chartbars.INTERVALS[venue]["3D"] == "3d"
+        assert chartbars.INTERVALS[venue]["M"] == "1M"
+    for tf in chartbars.TIMEFRAMES:
+        assert chartserve.check_tf(tf) == tf
+    with pytest.raises(chartserve.Rejected):
+        chartserve.check_tf("4320")      # Vela's canonical spelling of 3D is not the API's
+
+
 # ── chartserve /api/marks ───────────────────────────────────────────────────
 def test_marks_payload_upstream_failure_is_502():
     def broken(symbol, tf, now_ms):
@@ -301,7 +317,7 @@ def test_api_marks_over_http(server):
 
 
 @pytest.mark.parametrize("query", ["symbol=ETHUSDT&tf=60", "symbol=BTCUSDT&tf=1", "symbol=BTCUSDT",
-                                   "tf=60", "symbol=btcusdt&tf=60", "symbol=BTCUSDT&tf=M"])
+                                   "tf=60", "symbol=btcusdt&tf=60", "symbol=BTCUSDT&tf=1H"])
 def test_api_marks_rejects_unknown_symbol_or_tf(server, query):
     srv, _, _ = server
     status, body = _get(srv, f"/api/marks?{query}")

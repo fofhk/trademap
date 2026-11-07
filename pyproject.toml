@@ -1,0 +1,9 @@
+[project]
+name = "trademap"
+version = "0.1.0"
+description = "交易辅助看盘页：本地图表 + 多重信号显示与交叉验证（只看，不下单）"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

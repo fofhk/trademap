@@ -9,7 +9,7 @@
 //   J = 3K − 2D,  K and D seeded at 50
 import { registerNativeIndicator, stableSeriesId, INFO, WARNING, TRADE_EXIT } from '@luxalgo/vela/plugin';
 
-export const KDJ_TYPE = 'ballast-kdj';
+export const KDJ_TYPE = 'trademap-kdj';
 
 /** bars -> { k, d, j } arrays aligned to bars; NaN before the first full n-bar window. */
 export function computeKdj(bars, n = 9, m1 = 3, m2 = 3) {

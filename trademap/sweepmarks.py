@@ -26,7 +26,7 @@ import math
 import os
 import sys
 
-from ballast.td9 import Bar
+from trademap.td9 import Bar
 
 DEFAULT_FARSEER_SRC = "/Users/tingluo/Documents/CC/farseer/src"
 FETCH_LIMIT = 1000          # 7 天前低在 1 小时线上要 168 根 + 腿长，500 根不够

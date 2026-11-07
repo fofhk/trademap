@@ -1,8 +1,8 @@
 {
-  "name": "ballast-chart",
+  "name": "trademap-chart",
   "private": true,
   "version": "0.0.0",
-  "description": "Hand-drawn price levels for chartlevels.py (read-only prototype). Served by ../chartserve.py.",
+  "description": "trademap chart page: candles + signals computed in Python (read-only). Served by ../chartserve.py.",
   "type": "module",
   "scripts": {
     "build": "vite build",

@@ -1,5 +1,5 @@
 // ◆ 扫底回收（探索版）marks, DRAWN here but COMPUTED in Python (chartserve.py
-// /api/sweep -> ballast/sweepmarks.py -> farseer's detector). Display only:
+// /api/sweep -> trademap/sweepmarks.py -> farseer's detector). Display only:
 // nothing here or downstream trades on it, and the score is a provisional v0.
 //
 // Same rendering path and the same rule as td9marks.js: indicator labels, never
@@ -13,8 +13,9 @@
 // grey "•" text glyph -- the smallest point shape Vela draws is a 6px-radius
 // disc, no smaller than the 9TD triangles.
 import { registerNativeIndicator, stableSeriesId } from '@luxalgo/vela/plugin';
+import { sameTf } from './timeframes.js';
 
-export const SWEEP_TYPE = 'ballast-sweep';
+export const SWEEP_TYPE = 'trademap-sweep';
 
 const LEVEL_COLOR = {
     long: { high: '#00e676', mid: '#8bc34a', low: '#9e9e9e' },
@@ -42,7 +43,7 @@ export function setSweep(symbol, tf, events) {
 }
 
 function labelsFor(symbol, tf) {
-    if (symbol !== current.symbol || tf !== current.tf) return [];
+    if (symbol !== current.symbol || !sameTf(tf, current.tf)) return [];
     const out = [];
     current.events.forEach((e, ordinal) => {
         const above = e.side === 'short';

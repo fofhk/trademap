@@ -13,7 +13,7 @@ import json
 import pytest
 
 import chartserve
-from ballast import chartlevels as cl
+from trademap import chartlevels as cl
 
 T0 = 1790000000000        # an anchor time, epoch ms (Vela's unit)
 DAY = 86400

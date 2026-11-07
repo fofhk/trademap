@@ -1,5 +1,5 @@
-// 🍅 9TD marks, DRAWN here but COMPUTED in Python (ballast/td9.py via
-// chartserve.py /api/marks), so a future Ballast signal and this picture can
+// 🍅 9TD marks, DRAWN here but COMPUTED in Python (trademap/td9.py via
+// chartserve.py /api/marks), so a future trademap signal and this picture can
 // never disagree. Nothing in this file decides a count.
 //
 // Why a native indicator emitting `labels`: in Vela 0.8.1 that is the path
@@ -16,8 +16,9 @@
 // indicator's model, which is never serialized by that save path; this module
 // deliberately has no reference to the chart object at all.
 import { registerNativeIndicator, stableSeriesId } from '@luxalgo/vela/plugin';
+import { sameTf } from './timeframes.js';
 
-export const TD9_TYPE = 'ballast-td9';
+export const TD9_TYPE = 'trademap-td9';
 
 // TradingView's color.white / color.gray / color.purple / color.yellow, as in the script.
 const COUNT_COLOR = { 7: '#ffffff', 8: '#787b86', 9: '#9c27b0' };
@@ -47,7 +48,7 @@ export function setMarks(symbol, tf, marks) {
 function labelsFor(symbol, tf) {
     // A response for another market (a slow fetch after a switch) must not be
     // painted onto this one's candles.
-    if (symbol !== current.symbol || tf !== current.tf) return [];
+    if (symbol !== current.symbol || !sameTf(tf, current.tf)) return [];
     const out = [];
     current.marks.forEach((m, ordinal) => {
         const up = m.side === 'up';

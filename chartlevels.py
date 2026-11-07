@@ -22,7 +22,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ballast import chartlevels as cl
+from trademap import chartlevels as cl
 
 DEFAULT_STORE = Path("data") / "chart_drawings"
 TICKER = "https://api.bybit.com/v5/market/tickers"
